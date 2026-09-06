@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "VVV · standalone utility",
-  "version": "1.0.1",
-  "description": "SillyTavern 手机短时后台支架：生成开始或手动点击时播放约5分钟静音媒体，不劫持 fetch、不扫描聊天 DOM、不修改聊天数据。",
+  "version": "1.1.0",
+  "description": "SillyTavern 手机短时后台支架：生成开始时播放约5分钟静音媒体，并在 AI 正常回复完成后播放短提示音。",
   "auto_update": true
 }

@@ -1,24 +1,31 @@
 (() => {
     'use strict';
 
-    const VERSION = '1.0.1';
+    const VERSION = '1.1.0';
     const BUILD = `st-keepalive-5m@${VERSION}`;
-    // SillyTavern loads third-party extension entry files as ES modules.
-    // Resolve the bundled MP3 relative to this file so GitHub repo/folder renames do not break it.
-    const AUDIO_URL = new URL(`./silent-5m.mp3?v=${VERSION}`, import.meta.url).href;
+    const KEEPALIVE_AUDIO_URL = new URL(`./silent-5m.mp3?v=${VERSION}`, import.meta.url).href;
+    const DONE_AUDIO_URL = new URL(`./reply-done.mp3?v=${VERSION}`, import.meta.url).href;
     const BUTTON_ID = 'st-keepalive-5m-button';
+    const DONE_SOUND_DELAY_MS = 350;
+    const DONE_SOUND_VOLUME = 0.78;
 
     if (globalThis.__ST_KEEPALIVE_5M__) return;
 
     const state = {
         build: BUILD,
         audio: null,
+        doneAudio: null,
         unlocked: false,
+        doneAudioUnlocked: false,
         keepaliveWanted: false,
         playing: false,
         reason: '',
         lastError: '',
         eventBound: false,
+        doneSoundEnabled: true,
+        doneSoundTimer: null,
+        generationSerial: 0,
+        lastGenerationStoppedAt: 0,
     };
     globalThis.__ST_KEEPALIVE_5M__ = state;
 
@@ -31,15 +38,19 @@
         return null;
     }
 
-    function ensureAudio() {
-        if (state.audio) return state.audio;
-        const audio = new Audio(AUDIO_URL);
+    function prepareMediaElement(audio) {
         audio.preload = 'auto';
-        audio.loop = false; // 文件本身约5分钟，不做永久循环。
         audio.controls = false;
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
         audio.setAttribute('webkit-playsinline', '');
+        return audio;
+    }
+
+    function ensureAudio() {
+        if (state.audio) return state.audio;
+        const audio = prepareMediaElement(new Audio(KEEPALIVE_AUDIO_URL));
+        audio.loop = false; // 文件本身约5分钟，不做永久循环。
         audio.addEventListener('play', () => {
             state.playing = true;
             state.lastError = '';
@@ -57,12 +68,31 @@
             renderButton();
         });
         audio.addEventListener('error', () => {
-            state.lastError = 'audio-error';
+            state.lastError = 'keepalive-audio-error';
             state.playing = false;
             renderButton();
         });
         state.audio = audio;
         return audio;
+    }
+
+    function ensureDoneAudio() {
+        if (state.doneAudio) return state.doneAudio;
+        const audio = prepareMediaElement(new Audio(DONE_AUDIO_URL));
+        audio.loop = false;
+        audio.volume = DONE_SOUND_VOLUME;
+        audio.addEventListener('error', () => {
+            console.warn('[5分钟后台支架] 回复完成提示音加载失败。');
+        });
+        state.doneAudio = audio;
+        return audio;
+    }
+
+    function cancelPendingDoneSound() {
+        if (state.doneSoundTimer !== null) {
+            clearTimeout(state.doneSoundTimer);
+            state.doneSoundTimer = null;
+        }
     }
 
     function stopKeepAlive() {
@@ -95,24 +125,76 @@
         return state.playing;
     }
 
-    // iOS Safari / WKWebView 对媒体播放有用户手势限制。
-    // 第一次触摸页面时，只做一次极短的“媒体解锁”，不做 DOM 扫描、不做轮询。
-    async function unlockFromGesture() {
-        if (state.unlocked || state.keepaliveWanted) return;
-        const audio = ensureAudio();
+    async function playDoneSound() {
+        if (!state.doneSoundEnabled) return false;
+        const audio = ensureDoneAudio();
         try {
+            audio.pause();
             audio.currentTime = 0;
+            audio.volume = DONE_SOUND_VOLUME;
+            audio.muted = false;
             await audio.play();
-            state.unlocked = true;
-            setTimeout(() => {
-                if (state.keepaliveWanted) return;
-                try { audio.pause(); } catch (_) {}
-                try { audio.currentTime = 0; } catch (_) {}
-                state.playing = false;
-                renderButton();
-            }, 120);
-        } catch (_) {
-            // 不弹错误；用户仍可通过支架按钮手动授权。
+            state.doneAudioUnlocked = true;
+            return true;
+        } catch (error) {
+            console.warn('[5分钟后台支架] 回复已经完成，但浏览器阻止了提示音播放。请先在页面上点一次“支架”按钮完成媒体授权。', error);
+            return false;
+        }
+    }
+
+    function scheduleDoneSound() {
+        cancelPendingDoneSound();
+
+        // 如果用户刚刚手动停止生成，不把它当作“正常回复完成”。
+        if (Date.now() - state.lastGenerationStoppedAt < 1500) return;
+
+        const serial = state.generationSerial;
+        state.doneSoundTimer = setTimeout(() => {
+            state.doneSoundTimer = null;
+            // 350ms 内如果又开始了续写/自动继续，则取消这次提示音，避免在回复中途响。
+            if (serial !== state.generationSerial) return;
+            playDoneSound().catch(() => {});
+        }, DONE_SOUND_DELAY_MS);
+    }
+
+    // iOS Safari / WKWebView 对媒体播放有用户手势限制。
+    // 第一次触摸页面时，同时解锁静音支架和完成提示音两个媒体元素。
+    async function unlockFromGesture() {
+        if (state.unlocked && state.doneAudioUnlocked) return;
+
+        const keepalive = ensureAudio();
+        const doneAudio = ensureDoneAudio();
+
+        if (!state.unlocked && !state.keepaliveWanted) {
+            try {
+                keepalive.currentTime = 0;
+                await keepalive.play();
+                state.unlocked = true;
+                setTimeout(() => {
+                    if (state.keepaliveWanted) return;
+                    try { keepalive.pause(); } catch (_) {}
+                    try { keepalive.currentTime = 0; } catch (_) {}
+                    state.playing = false;
+                    renderButton();
+                }, 120);
+            } catch (_) {
+                // 用户仍可通过支架按钮手动授权。
+            }
+        }
+
+        if (!state.doneAudioUnlocked) {
+            try {
+                const previousMuted = doneAudio.muted;
+                doneAudio.muted = true;
+                doneAudio.currentTime = 0;
+                await doneAudio.play();
+                doneAudio.pause();
+                doneAudio.currentTime = 0;
+                doneAudio.muted = previousMuted;
+                state.doneAudioUnlocked = true;
+            } catch (_) {
+                try { doneAudio.muted = false; } catch (_) {}
+            }
         }
     }
 
@@ -123,13 +205,13 @@
         button.classList.toggle('needs-unlock', !!state.lastError && !state.playing);
         if (state.playing) {
             button.textContent = '支架·5m';
-            button.title = '5分钟静音支架正在运行。点一下可提前停止。';
+            button.title = '5分钟静音支架正在运行；AI正常回复完成后会播放一声提示音。点一下可提前停止支架。';
         } else if (state.lastError) {
             button.textContent = '点我授权';
             button.title = '浏览器拦截了自动播放。点一下完成媒体授权并启动5分钟支架。';
         } else {
             button.textContent = '支架';
-            button.title = '点一下手动启动5分钟后台支架。SillyTavern原生生成开始时也会自动尝试启动。';
+            button.title = '点一下手动启动5分钟后台支架；AI正常回复完成后会播放一声提示音。';
         }
         button.setAttribute('aria-pressed', state.playing ? 'true' : 'false');
     }
@@ -144,7 +226,8 @@
         button.addEventListener('click', async (event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (state.playing) stopKeepAlive();
+            await unlockFromGesture();
+            if (state.keepaliveWanted && state.playing) stopKeepAlive();
             else await startKeepAlive('manual');
         });
         document.body.appendChild(button);
@@ -158,19 +241,35 @@
         const types = c?.event_types || c?.eventTypes || globalThis.event_types || {};
         if (!source?.on) return false;
 
-        // 不接管生成、不改请求。只旁听 SillyTavern 原生“生成开始”事件。
-        const generationStarted = types.GENERATION_STARTED || 'GENERATION_STARTED';
+        const generationStarted = types.GENERATION_STARTED || 'generation_started';
+        const generationEnded = types.GENERATION_ENDED || 'generation_ended';
+        const generationStopped = types.GENERATION_STOPPED || 'generation_stopped';
+
         source.on(generationStarted, () => {
+            cancelPendingDoneSound();
+            state.generationSerial += 1;
+            state.lastGenerationStoppedAt = 0;
             startKeepAlive('generation').catch(() => {});
         });
 
+        source.on(generationEnded, () => {
+            scheduleDoneSound();
+        });
+
+        source.on(generationStopped, () => {
+            cancelPendingDoneSound();
+            state.generationSerial += 1;
+            state.lastGenerationStoppedAt = Date.now();
+        });
+
         state.eventBound = true;
-        console.info(`[5分钟后台支架] ${BUILD} 已绑定 GENERATION_STARTED；无 fetch 劫持、无 DOM 轮询。`);
+        console.info(`[5分钟后台支架] ${BUILD} 已绑定 GENERATION_STARTED / GENERATION_ENDED / GENERATION_STOPPED。`);
         return true;
     }
 
     function boot() {
         ensureAudio();
+        ensureDoneAudio();
         ensureButton();
         bindGenerationEvents();
 
@@ -186,16 +285,22 @@
         document.addEventListener('pointerdown', unlockFromGesture, { once: true, capture: true, passive: true });
         document.addEventListener('touchstart', unlockFromGesture, { once: true, capture: true, passive: true });
 
-        // 对 VVV 或其他扩展开放一个可选接口；不要求任何扩展接入。
         globalThis.STKeepAlive5m = Object.freeze({
             start: () => startKeepAlive('api'),
             stop: () => stopKeepAlive(),
+            testDoneSound: () => playDoneSound(),
+            setDoneSoundEnabled: (enabled) => {
+                state.doneSoundEnabled = !!enabled;
+                return state.doneSoundEnabled;
+            },
             status: () => ({
                 build: state.build,
                 unlocked: state.unlocked,
+                doneAudioUnlocked: state.doneAudioUnlocked,
                 playing: state.playing,
                 reason: state.reason,
                 lastError: state.lastError,
+                doneSoundEnabled: state.doneSoundEnabled,
             }),
         });
     }
