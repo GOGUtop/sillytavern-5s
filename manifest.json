@@ -1,0 +1,12 @@
+{
+  "display_name": "5分钟后台支架",
+  "loading_order": 5,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "VVV · standalone utility",
+  "version": "1.0.1",
+  "description": "SillyTavern 手机短时后台支架：生成开始或手动点击时播放约5分钟静音媒体，不劫持 fetch、不扫描聊天 DOM、不修改聊天数据。",
+  "auto_update": true
+}
