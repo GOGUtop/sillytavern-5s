@@ -3,10 +3,10 @@
   "loading_order": 5,
   "requires": [],
   "optional": [],
-  "js": "pip-bridge-v2.2.0.js",
-  "css": "pip-bridge-v2.2.0.css",
+  "js": "pip-bridge-v2.3.0.js",
+  "css": "pip-bridge-v2.3.0.css",
   "author": "VVV · standalone utility",
-  "version": "2.2.0",
-  "description": "SillyTavern iPhone PiP 后台支架：取消所有悬浮按钮，只在“扩展程序 → PiP 后台支架”下方显示常驻“PiP视频开启”按钮；使用无声循环视频 + 系统画中画。",
+  "version": "2.3.0",
+  "description": "SillyTavern PiP 后台支架：扩展面板内开启 PiP；增强桌面浏览器兼容；回复完成可播放提示音并在支持的系统上显示系统横幅通知。",
   "auto_update": true
 }
