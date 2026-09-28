@@ -3,10 +3,10 @@
   "loading_order": 5,
   "requires": [],
   "optional": [],
-  "js": "pip-bridge-v2.3.0.js",
-  "css": "pip-bridge-v2.3.0.css",
+  "js": "pip-bridge-v2.4.0.js",
+  "css": "pip-bridge-v2.4.0.css",
   "author": "VVV · standalone utility",
-  "version": "2.3.0",
-  "description": "SillyTavern PiP 后台支架：扩展面板内开启 PiP；增强桌面浏览器兼容；回复完成可播放提示音并在支持的系统上显示系统横幅通知。",
+  "version": "2.4.0",
+  "description": "SillyTavern PiP 后台支架：Web App/PWA 与浏览器均按实际 API 尝试 PiP；回复完成支持提示音与系统横幅通知；桌面端提供标准或手动 PiP。",
   "auto_update": true
 }
