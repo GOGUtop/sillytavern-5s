@@ -1,7 +1,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '2.0.0';
+    const VERSION = '2.0.1';
     const BUILD = `st-keepalive-5m@${VERSION}`;
     const PIP_VIDEO_URL = new URL(`./pip-loop.mp4?v=${VERSION}`, import.meta.url).href;
     const KEEPALIVE_AUDIO_URL = new URL(`./silent-5m.mp3?v=${VERSION}`, import.meta.url).href;
@@ -32,6 +32,7 @@
         keepaliveTimer: null,
         generationSerial: 0,
         lastGenerationStoppedAt: 0,
+        viewportFixBound: false,
     };
     globalThis.__ST_KEEPALIVE_5M__ = state;
 
@@ -412,10 +413,56 @@
         }
     }
 
+    function isMobileSafeLayout() {
+        const vvWidth = Number(globalThis.visualViewport?.width || 0);
+        const innerWidth = Number(globalThis.innerWidth || 0);
+        const clientWidth = Number(document.documentElement?.clientWidth || 0);
+        const visibleWidth = vvWidth || Math.min(innerWidth || Infinity, clientWidth || Infinity);
+        const touch = Number(navigator.maxTouchPoints || 0) > 0;
+        const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+        const ios = /iPad|iPhone|iPod/i.test(navigator.userAgent || '')
+            || (navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1);
+
+        // 关键：iPhone 有时 layout viewport 仍然很宽，但 visualViewport 才是真正肉眼可见的宽度。
+        // 不能只靠 CSS @media(max-width)，否则 right: 8px 可能被放到可视区域之外。
+        return ios || (visibleWidth > 0 && visibleWidth <= 760) || (touch && coarse && innerWidth <= 1024);
+    }
+
+    function applyButtonViewportFix() {
+        const button = document.getElementById(BUTTON_ID);
+        if (!button) return;
+
+        const mobileSafe = isMobileSafeLayout();
+        button.classList.toggle('mobile-safe', mobileSafe);
+
+        // 暴露一点诊断信息，方便之后直接在 Safari Web Inspector 里看。
+        try {
+            button.dataset.visualWidth = String(Math.round(globalThis.visualViewport?.width || 0));
+            button.dataset.innerWidth = String(Math.round(globalThis.innerWidth || 0));
+        } catch (_) {}
+    }
+
+    function bindButtonViewportFix() {
+        if (state.viewportFixBound) return;
+        state.viewportFixBound = true;
+
+        const update = () => {
+            requestAnimationFrame(() => {
+                applyButtonViewportFix();
+            });
+        };
+
+        globalThis.addEventListener?.('resize', update, { passive: true });
+        globalThis.addEventListener?.('orientationchange', update, { passive: true });
+        globalThis.visualViewport?.addEventListener?.('resize', update, { passive: true });
+        globalThis.visualViewport?.addEventListener?.('scroll', update, { passive: true });
+    }
+
     function renderButton() {
         const button = document.getElementById(BUTTON_ID);
         if (!button) return;
 
+        applyButtonViewportFix();
         button.classList.toggle('is-playing', !!state.playing);
         button.classList.toggle('is-pip', !!state.pipActive);
         button.classList.toggle('needs-unlock', !!state.lastError && !state.pipActive);
@@ -474,6 +521,8 @@
             }
         });
         document.body.appendChild(button);
+        bindButtonViewportFix();
+        applyButtonViewportFix();
         renderButton();
     }
 
@@ -551,6 +600,9 @@
                 lastError: state.lastError,
                 doneSoundEnabled: state.doneSoundEnabled,
                 pipVideoUrl: PIP_VIDEO_URL,
+                mobileSafeLayout: isMobileSafeLayout(),
+                visualViewportWidth: Math.round(globalThis.visualViewport?.width || 0),
+                innerWidth: Math.round(globalThis.innerWidth || 0),
             }),
         });
     }

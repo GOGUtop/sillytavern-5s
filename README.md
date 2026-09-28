@@ -2,11 +2,25 @@
 
 这是原“5分钟后台支架”的 PiP 版本，主要面向 iPhone / Safari / iOS WebKit。
 
+## v2.0.1：iPhone 看不到按钮的修复
+
+部分 iPhone / Safari / SillyTavern 布局会出现“页面布局宽度大于手机实际可视宽度”的情况。上一版按钮使用 `right` 固定定位时，可能实际上被摆到了手机屏幕右侧之外。
+
+v2.0.1 会读取 `visualViewport` 并识别触屏/iOS：
+
+- 桌面：仍放在右下角。
+- iPhone / 窄可视区：强制放到**左下角可视区域**。
+- 手机按钮提高到 42px，增加触摸面积。
+- 提高 z-index，并强制 `display / visibility / opacity`，避免被主题样式藏掉。
+- 旋转屏幕、Safari 地址栏变化、可视区变化时会重新判断。
+
+如果你在手机上仍然完全看不到按钮，可以在控制台执行 `STKeepAlive5m.status()`，其中会显示 `mobileSafeLayout`、`visualViewportWidth` 和 `innerWidth`，方便继续定位。
+
 ## 为什么改成 PiP
 
 旧版用 `silent-5m.mp3` 持续播放静音音频来尽量延缓页面后台冻结。iPhone 上这会占用媒体播放会话，容易和你正在看的视频/听的音频互相抢占。
 
-v2.0.0 优先改用一个**没有音轨的循环视频**：
+v2.0.1 优先改用一个**没有音轨的循环视频**：
 
 - 右下角点 **PiP支架**，把 `pip-loop.mp4` 放进系统画中画。
 - PiP 视频循环播放，最长约 5 分钟；每次新的 AI 生成会重新计算这 5 分钟。
