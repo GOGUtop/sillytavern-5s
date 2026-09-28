@@ -1,117 +1,42 @@
-# SillyTavern 5分钟 PiP 后台支架
+# SillyTavern 5分钟 PiP 后台支架 v2.1.0
 
-这是原“5分钟后台支架”的 PiP 版本，主要面向 iPhone / Safari / iOS WebKit。
+这一版专门处理 iPhone 上“按钮完全看不到”的情况。
 
-## v2.0.1：iPhone 看不到按钮的修复
+## v2.1.0 改了什么
 
-部分 iPhone / Safari / SillyTavern 布局会出现“页面布局宽度大于手机实际可视宽度”的情况。上一版按钮使用 `right` 固定定位时，可能实际上被摆到了手机屏幕右侧之外。
+1. **强制绕过 iPhone Safari 旧缓存**：manifest 不再加载固定的 `index.js` / `style.css`，而是加载唯一文件名 `pip-bridge-v2.1.0.js` / `.css`。
+2. **关键按钮样式由 JS 直接写入 inline `!important`**：不再依赖 CSS 是否被缓存。
+3. **按 `visualViewport` 计算按钮坐标**：手机上直接把按钮放在当前肉眼可见视口左下附近。
+4. **DOM 自动修复**：如果 SillyTavern 的界面重绘把按钮移除，MutationObserver 会重新插回。
+5. **增加第二入口**：打开 SillyTavern 的“扩展程序”面板，会出现 `PiP 后台支架` 抽屉和一个大按钮。即使浮动按钮被主题/布局影响，也能从这里启动。
+6. **iPhone 主屏幕/PWA 检测**：如果是“添加到主屏幕”的独立 Web App，并且 WebKit probe 明确不允许 PiP，不会再退回静音音频，而会提示改用 Safari。
+7. **保留 `pip-loop.mp4` 可替换**：直接覆盖同名文件即可。建议 H.264 / MP4 / 360p~720p / 无音轨 / 几秒到几十秒循环。
 
-v2.0.1 会读取 `visualViewport` 并识别触屏/iOS：
+## iPhone 特别说明
 
-- 桌面：仍放在右下角。
-- iPhone / 窄可视区：强制放到**左下角可视区域**。
-- 手机按钮提高到 42px，增加触摸面积。
-- 提高 z-index，并强制 `display / visibility / opacity`，避免被主题样式藏掉。
-- 旋转屏幕、Safari 地址栏变化、可视区变化时会重新判断。
+截至 2026 年，WebKit 仍有一个已公开的问题：iOS/iPadOS 的 Home Screen Web App（PWA/standalone）里，`document.pictureInPictureEnabled` 可能显示为可用，但实际 `requestPictureInPicture()` 会失败；同一页面用 Safari 直接打开则可以正常 PiP。
 
-如果你在手机上仍然完全看不到按钮，可以在控制台执行 `STKeepAlive5m.status()`，其中会显示 `mobileSafeLayout`、`visualViewportWidth` 和 `innerWidth`，方便继续定位。
+因此如果你从 iPhone 主屏幕图标打开 SillyTavern，看到 `Safari PiP`，请：
 
-## 为什么改成 PiP
+- 复制/打开同一个 SillyTavern 地址到 Safari；
+- 在 Safari 页面里点插件的 `PiP支架` / `启动 PiP`；
+- PiP 开启后再切换到其他 App。
 
-旧版用 `silent-5m.mp3` 持续播放静音音频来尽量延缓页面后台冻结。iPhone 上这会占用媒体播放会话，容易和你正在看的视频/听的音频互相抢占。
+## 入口
 
-v2.0.1 优先改用一个**没有音轨的循环视频**：
+- 浮动按钮：手机可视区域左下附近。
+- 备用入口：顶部“扩展程序” → `PiP 后台支架`。
 
-- 右下角点 **PiP支架**，把 `pip-loop.mp4` 放进系统画中画。
-- PiP 视频循环播放，最长约 5 分钟；每次新的 AI 生成会重新计算这 5 分钟。
-- AI 开始生成时会自动确保循环视频在播放；如果还没进 PiP，按钮会显示 **开PiP**。
-- iOS 要求进入 PiP 通常由一次真实用户点击触发，所以扩展不会在生成开始时强行自动弹 PiP。
-- 浏览器完全不支持 PiP 时，才会回退到旧的 `silent-5m.mp3` 音频支架。
-- AI 正常回复完成后仍可播放 `reply-done.mp3` 提示音；手动停止生成不响。
+## 调试
 
-## 换成你自己的 PiP 视频
-
-直接把扩展目录中的：
-
-```text
-pip-loop.mp4
-```
-
-替换成你自己的同名视频即可。
-
-为了 iPhone 兼容和省电，建议：
-
-- MP4 容器
-- H.264 / AVC 视频编码
-- `yuv420p`
-- **不要音轨**（最重要，避免重新抢占音频）
-- 360p～720p 足够
-- 3～15 秒短片，扩展会自动 `loop`
-- 文件尽量小，避免每次加载浪费流量和内存
-
-如果替换后 Safari 仍显示旧视频，刷新缓存，或者把 `manifest.json` / `index.js` 里的版本号再加一位。
-
-## 使用方式（iPhone）
-
-1. 打开 SillyTavern 页面后，点一次右下角 **PiP支架**。
-2. 系统出现画中画小窗后，再切到别的 App 或去看别的视频。
-3. AI 新一轮生成开始时，扩展会继续维持/重置支架时长。
-4. 点插件按钮或直接关掉系统 PiP 小窗，即可停止支架。
-
-如果系统层面禁用了画中画，网页无法绕过这个设置。
-
-## 文件结构
-
-```text
-manifest.json
-index.js
-style.css
-pip-loop.mp4       # PiP 循环视频，可自行替换
-silent-5m.mp3      # 仅作为无 PiP 浏览器的兜底
-reply-done.mp3     # 回复完成提示音
-README.md
-.gitignore
-```
-
-## 控制台 API
-
-查看状态：
+Safari Web Inspector 控制台可运行：
 
 ```js
 STKeepAlive5m.status()
 ```
 
-手动启动播放（不会绕过 iOS 的 PiP 点击限制）：
+强制重建 UI：
 
 ```js
-STKeepAlive5m.start()
+STKeepAlive5m.repairUI()
 ```
-
-尝试进入 PiP（最好从用户点击事件中调用）：
-
-```js
-STKeepAlive5m.enterPiP()
-```
-
-停止：
-
-```js
-STKeepAlive5m.stop()
-```
-
-测试完成提示音：
-
-```js
-STKeepAlive5m.testDoneSound()
-```
-
-临时关闭 / 开启完成提示音：
-
-```js
-STKeepAlive5m.setDoneSoundEnabled(false)
-STKeepAlive5m.setDoneSoundEnabled(true)
-```
-
-## iOS 限制
-
-PiP 比“静音音频保活”更适合你这个一边等待 SillyTavern、一边使用其他 App 的场景，但它仍然受 iOS/WebKit 系统策略控制。系统可能因为省电、内存压力、媒体会话切换或用户关闭 PiP 而暂停/冻结页面，网页扩展无法保证永久后台运行。
