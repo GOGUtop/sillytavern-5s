@@ -1,42 +1,25 @@
-# SillyTavern 5分钟 PiP 后台支架 v2.1.0
+# 5分钟 PiP 后台支架 v2.2.0
 
-这一版专门处理 iPhone 上“按钮完全看不到”的情况。
+这一版按手机端使用方式重新简化 UI：**彻底取消右下角悬浮按钮**。
 
-## v2.1.0 改了什么
+## 使用
 
-1. **强制绕过 iPhone Safari 旧缓存**：manifest 不再加载固定的 `index.js` / `style.css`，而是加载唯一文件名 `pip-bridge-v2.1.0.js` / `.css`。
-2. **关键按钮样式由 JS 直接写入 inline `!important`**：不再依赖 CSS 是否被缓存。
-3. **按 `visualViewport` 计算按钮坐标**：手机上直接把按钮放在当前肉眼可见视口左下附近。
-4. **DOM 自动修复**：如果 SillyTavern 的界面重绘把按钮移除，MutationObserver 会重新插回。
-5. **增加第二入口**：打开 SillyTavern 的“扩展程序”面板，会出现 `PiP 后台支架` 抽屉和一个大按钮。即使浮动按钮被主题/布局影响，也能从这里启动。
-6. **iPhone 主屏幕/PWA 检测**：如果是“添加到主屏幕”的独立 Web App，并且 WebKit probe 明确不允许 PiP，不会再退回静音音频，而会提示改用 Safari。
-7. **保留 `pip-loop.mp4` 可替换**：直接覆盖同名文件即可。建议 H.264 / MP4 / 360p~720p / 无音轨 / 几秒到几十秒循环。
+打开 SillyTavern → **扩展程序**，在 **PiP 后台支架** 标题正下方直接点击 **PiP视频开启**。不需要展开抽屉，也不需要寻找页面悬浮球。
 
-## iPhone 特别说明
+进入 PiP 后按钮会显示 **关闭PiP视频**；如果循环视频已经播放但尚未进入画中画，会显示 **进入PiP画中画**。
 
-截至 2026 年，WebKit 仍有一个已公开的问题：iOS/iPadOS 的 Home Screen Web App（PWA/standalone）里，`document.pictureInPictureEnabled` 可能显示为可用，但实际 `requestPictureInPicture()` 会失败；同一页面用 Safari 直接打开则可以正常 PiP。
+## 自定义循环视频
 
-因此如果你从 iPhone 主屏幕图标打开 SillyTavern，看到 `Safari PiP`，请：
+直接用你自己的视频覆盖插件目录中的 `pip-loop.mp4` 即可。建议使用 MP4/H.264、无音轨、小分辨率短循环视频。
 
-- 复制/打开同一个 SillyTavern 地址到 Safari；
-- 在 Safari 页面里点插件的 `PiP支架` / `启动 PiP`；
-- PiP 开启后再切换到其他 App。
+## iPhone 提示
 
-## 入口
+网页进入 PiP 需要由用户点击触发。如果 iPhone 是以“添加到主屏幕”的 Web App/PWA 方式打开，系统 WebKit 可能限制网页 PiP；这种情况下请用 Safari 直接打开同一个 SillyTavern 地址。
 
-- 浮动按钮：手机可视区域左下附近。
-- 备用入口：顶部“扩展程序” → `PiP 后台支架`。
+## v2.2.0 变化
 
-## 调试
-
-Safari Web Inspector 控制台可运行：
-
-```js
-STKeepAlive5m.status()
-```
-
-强制重建 UI：
-
-```js
-STKeepAlive5m.repairUI()
-```
+- 删除悬浮球及其手机定位、visualViewport 修复逻辑。
+- CSS 强制隐藏旧版本遗留的 `#st-keepalive-5m-button`。
+- DOM 观察器发现旧悬浮按钮时会主动删除。
+- PiP 入口固定为扩展程序面板内的常驻按钮。
+- 保留回复完成提示音、5 分钟计时和 `pip-loop.mp4` 替换能力。
