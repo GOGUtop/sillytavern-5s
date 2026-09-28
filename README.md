@@ -1,28 +1,20 @@
-# 5分钟 PiP 后台支架 v2.4.0
+# PiP 原生桥接支架 v3.0.0
 
-这一版按实机结果调整：**iPhone Web App / PWA 不再被插件硬编码判定为“不支持 PiP”**。只要当前 WebKit/浏览器提供可调用的 PiP 接口，就直接尝试进入画中画。
+这一版与 **SillyTavernNativePiP iOS 原生壳** 配套使用。
 
-## 目标组合
+## 功能
 
-- Web App / PWA：PiP + 回复完成提示音 + 系统横幅（以设备实际 API/权限为准）
-- iPhone Safari：PiP + 提示音；若当前容器允许通知权限，也会启用横幅
-- 桌面浏览器：标准 PiP；没有可编程 PiP API 时显示原生视频预览，供浏览器自己的 PiP 入口使用
+- 在原生壳内，“PiP视频开启”通过 `WKScriptMessageHandler` 调用 Swift。
+- Swift 使用 `AVPictureInPictureController + AVPlayerLayer` 启动真正的 iOS 系统 PiP，不依赖主屏幕 Web App 的网页 PiP。
+- 回复生成完毕时，插件把事件发给原生壳；原生壳用 `UNUserNotificationCenter` 显示系统横幅并播放系统通知声音。
+- 在普通 Safari / 桌面浏览器打开时，仍会尝试网页 PiP，回复完成则回退到 `reply-done.mp3` 提示音。
 
-## 使用
+## 安装
 
-1. 打开 SillyTavern → 扩展程序 → PiP 后台支架。
-2. 点 **PiP视频开启**。
-3. 点 **开启回复完成提醒**，这次点击会同时尝试授权提示音与系统通知。
-4. 点 **测试提醒** 验证提示音和系统横幅。
+把整个 `SillyTavernExtension-v3.0.0` 文件夹安装为 SillyTavern 前端扩展。建议删除旧的 v2.x PiP 支架，避免重复监听回复完成事件。
 
-## 视频替换
+## 自定义 PiP 视频
 
-直接用你自己的视频覆盖 `pip-loop.mp4`。建议 H.264 MP4、无音轨、短循环。
+直接覆盖本目录的 `pip-loop.mp4`。原生壳启动 PiP 时会收到这个文件的实际 URL，因此以后换视频不需要重新编译 iOS App。
 
-## v2.4.0 关键变化
-
-- 删除 `ios-standalone-no-pip` 硬拦截。
-- Web App/PWA 和 Safari 使用同一套 PiP 实际调用逻辑。
-- WebKit `webkitSetPresentationMode()` 存在时直接尝试，不再因为能力探针返回保守结果而提前拒绝。
-- 保留回复完成提示音、Service Worker 系统横幅、桌面 PiP 兼容。
-- 继续彻底禁用旧版右下角悬浮球。
+推荐 H.264 MP4、无音轨、360p~720p、短循环。
