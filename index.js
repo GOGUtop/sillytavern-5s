@@ -1,10 +1,11 @@
 (() => {
     'use strict';
 
-    const VERSION = '3.0.0';
+    const VERSION = '3.1.0';
     const BASE_URL = import.meta.url;
     const PIP_VIDEO_URL = new URL(`./pip-loop.mp4?v=${VERSION}`, BASE_URL).href;
     const DONE_AUDIO_URL = new URL(`./reply-done.mp3?v=${VERSION}`, BASE_URL).href;
+    const KEEPALIVE_AUDIO_URL = new URL(`./silent-5m.mp3?v=${VERSION}`, BASE_URL).href;
 
     const PANEL_ID = 'st-native-pip-panel';
     const PIP_BUTTON_ID = 'st-native-pip-button';
@@ -22,6 +23,8 @@
         booted: false,
         doneAudioUnlocked: false,
         doneAudio: null,
+        keepAliveAudio: null,
+        keepAliveActive: false,
         webVideo: null,
         lastStoppedAt: 0,
         generationSerial: 0,
@@ -87,6 +90,54 @@
         } catch (_) {
             return false;
         }
+    }
+
+
+    function ensureKeepAliveAudio() {
+        if (state.keepAliveAudio) return state.keepAliveAudio;
+        const audio = new Audio(KEEPALIVE_AUDIO_URL);
+        audio.preload = 'auto';
+        audio.loop = true;
+        // The file itself is silent. Keep the element unmuted so WebKit treats it
+        // as real media playback and is less likely to freeze the WebContent process.
+        audio.muted = false;
+        audio.volume = 1;
+        audio.setAttribute('playsinline', '');
+        state.keepAliveAudio = audio;
+        return audio;
+    }
+
+    async function startGenerationKeepAlive() {
+        state.native = nativeAvailable();
+        if (state.native) nativePost('prepareBackgroundAudio');
+        const audio = ensureKeepAliveAudio();
+        try {
+            if (!audio.paused) {
+                state.keepAliveActive = true;
+                return true;
+            }
+            audio.currentTime = 0;
+            await audio.play();
+            state.keepAliveActive = true;
+            console.debug('[PiP原生桥] generation WebView keep-alive started');
+            return true;
+        } catch (error) {
+            state.keepAliveActive = false;
+            console.warn('[PiP原生桥] keep-alive audio failed', error);
+            return false;
+        }
+    }
+
+    function stopGenerationKeepAlive() {
+        const audio = state.keepAliveAudio;
+        try {
+            if (audio) {
+                audio.pause();
+                audio.currentTime = 0;
+            }
+        } catch (_) {}
+        state.keepAliveActive = false;
+        if (nativeAvailable()) nativePost('releaseBackgroundAudio');
     }
 
     function ensureWebVideo() {
@@ -265,11 +316,18 @@
         source.on(started, () => {
             state.generationSerial += 1;
             state.lastStoppedAt = 0;
+            startGenerationKeepAlive();
         });
-        source.on(ended, sendCompletionAlert);
+        source.on(ended, () => {
+            sendCompletionAlert();
+            // Give the native notification bridge a brief moment to enqueue the banner
+            // before releasing the WebView keep-alive media session.
+            setTimeout(stopGenerationKeepAlive, 1200);
+        });
         source.on(stopped, () => {
             state.generationSerial += 1;
             state.lastStoppedAt = Date.now();
+            stopGenerationKeepAlive();
         });
         state.eventBound = true;
         return true;
@@ -294,6 +352,11 @@
             else if (state.notificationStatus === 'denied') toast('系统通知被拒绝，请到 iPhone 设置 → 通知 中为本 App 开启。', 'warning');
             render();
         });
+        globalThis.addEventListener('st-native-background-audio-state', (event) => {
+            if (event?.detail?.active === false && state.keepAliveActive) {
+                console.warn('[PiP原生桥] native background audio session was not active');
+            }
+        });
         globalThis.addEventListener('st-native-notification-result', (event) => {
             if (event?.detail?.ok === false && event?.detail?.status === 'notification-permission-not-granted') {
                 toast('系统横幅尚未授权，请先点“开启系统通知”。', 'warning');
@@ -306,6 +369,7 @@
         state.booted = true;
         bindNativeEvents();
         ensureDoneAudio();
+        ensureKeepAliveAudio();
         ensurePanel();
         bindGenerationEvents();
         state.native = nativeAvailable();

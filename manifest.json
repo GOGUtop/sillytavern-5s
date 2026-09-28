@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "VVV · native bridge edition",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "SillyTavern PiP 支架：在 iOS 原生壳中调用 AVPictureInPictureController 和系统本地通知；Safari/桌面保留网页 PiP 与提示音降级。",
   "auto_update": false
 }
