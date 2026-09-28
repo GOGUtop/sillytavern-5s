@@ -1,9 +1,21 @@
+#st-keepalive-5m-video {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    width: 2px;
+    height: 2px;
+    opacity: 0.01;
+    pointer-events: none;
+    z-index: -1;
+    object-fit: cover;
+}
+
 #st-keepalive-5m-button {
     position: fixed;
     right: max(10px, env(safe-area-inset-right));
     bottom: calc(max(10px, env(safe-area-inset-bottom)) + 58px);
     z-index: 2147483000;
-    min-width: 54px;
+    min-width: 62px;
     height: 30px;
     padding: 0 10px;
     border: 1px solid rgba(196, 164, 96, 0.65);
@@ -22,6 +34,11 @@
     border-color: rgba(218, 187, 113, 0.9);
 }
 
+#st-keepalive-5m-button.is-pip {
+    border-color: rgba(122, 214, 157, 0.92);
+    box-shadow: 0 1px 7px rgba(74, 181, 117, 0.24);
+}
+
 #st-keepalive-5m-button.needs-unlock {
     min-width: 72px;
 }
@@ -31,7 +48,7 @@
         right: max(8px, env(safe-area-inset-right));
         bottom: calc(max(8px, env(safe-area-inset-bottom)) + 52px);
         height: 28px;
-        min-width: 50px;
+        min-width: 58px;
         padding: 0 8px;
         line-height: 26px;
         font-size: 11px;

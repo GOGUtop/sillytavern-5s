@@ -1,29 +1,35 @@
 (() => {
     'use strict';
 
-    const VERSION = '1.1.0';
+    const VERSION = '2.0.0';
     const BUILD = `st-keepalive-5m@${VERSION}`;
+    const PIP_VIDEO_URL = new URL(`./pip-loop.mp4?v=${VERSION}`, import.meta.url).href;
     const KEEPALIVE_AUDIO_URL = new URL(`./silent-5m.mp3?v=${VERSION}`, import.meta.url).href;
     const DONE_AUDIO_URL = new URL(`./reply-done.mp3?v=${VERSION}`, import.meta.url).href;
     const BUTTON_ID = 'st-keepalive-5m-button';
+    const VIDEO_ID = 'st-keepalive-5m-video';
     const DONE_SOUND_DELAY_MS = 350;
     const DONE_SOUND_VOLUME = 0.78;
+    const KEEPALIVE_LIMIT_MS = 5 * 60 * 1000;
 
     if (globalThis.__ST_KEEPALIVE_5M__) return;
 
     const state = {
         build: BUILD,
         audio: null,
+        video: null,
         doneAudio: null,
-        unlocked: false,
         doneAudioUnlocked: false,
         keepaliveWanted: false,
         playing: false,
+        pipActive: false,
+        mode: 'detecting',
         reason: '',
         lastError: '',
         eventBound: false,
         doneSoundEnabled: true,
         doneSoundTimer: null,
+        keepaliveTimer: null,
         generationSerial: 0,
         lastGenerationStoppedAt: 0,
     };
@@ -38,29 +44,145 @@
         return null;
     }
 
-    function prepareMediaElement(audio) {
-        audio.preload = 'auto';
-        audio.controls = false;
-        audio.playsInline = true;
-        audio.setAttribute('playsinline', '');
-        audio.setAttribute('webkit-playsinline', '');
-        return audio;
+    function prepareMediaElement(media) {
+        media.preload = 'auto';
+        media.controls = false;
+        media.playsInline = true;
+        media.setAttribute('playsinline', '');
+        media.setAttribute('webkit-playsinline', '');
+        return media;
     }
 
-    function ensureAudio() {
-        if (state.audio) return state.audio;
-        const audio = prepareMediaElement(new Audio(KEEPALIVE_AUDIO_URL));
-        audio.loop = false; // 文件本身约5分钟，不做永久循环。
-        audio.addEventListener('play', () => {
+    function supportsWebKitPiP(video = state.video) {
+        if (!video) return false;
+        try {
+            return typeof video.webkitSupportsPresentationMode === 'function'
+                && video.webkitSupportsPresentationMode('picture-in-picture')
+                && typeof video.webkitSetPresentationMode === 'function';
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function supportsStandardPiP(video = state.video) {
+        if (!video) return false;
+        return !!document.pictureInPictureEnabled
+            && typeof video.requestPictureInPicture === 'function';
+    }
+
+    function hasPiPAPI(video = state.video) {
+        if (!video) return false;
+        return typeof video.webkitSetPresentationMode === 'function'
+            || typeof video.requestPictureInPicture === 'function';
+    }
+
+    function supportsPiP(video = state.video) {
+        return supportsWebKitPiP(video) || supportsStandardPiP(video);
+    }
+
+    function detectMode() {
+        const video = ensureVideo();
+        // Safari 可能要等视频 metadata 就绪后，webkitSupportsPresentationMode 才给出最终结果。
+        // 只要存在 PiP API，就优先保留视频路线，避免过早误判后启动音频兜底。
+        state.mode = supportsPiP(video) || hasPiPAPI(video) ? 'pip-video' : 'audio-fallback';
+        return state.mode;
+    }
+
+    function clearKeepaliveTimer() {
+        if (state.keepaliveTimer !== null) {
+            clearTimeout(state.keepaliveTimer);
+            state.keepaliveTimer = null;
+        }
+    }
+
+    function armKeepaliveTimer() {
+        clearKeepaliveTimer();
+        state.keepaliveTimer = setTimeout(() => {
+            state.keepaliveTimer = null;
+            stopKeepAlive().catch(() => {});
+        }, KEEPALIVE_LIMIT_MS);
+    }
+
+    function ensureVideo() {
+        if (state.video) return state.video;
+
+        const video = prepareMediaElement(document.createElement('video'));
+        video.id = VIDEO_ID;
+        video.src = PIP_VIDEO_URL;
+        video.loop = true;
+        video.muted = true;
+        video.defaultMuted = true;
+        video.volume = 0;
+        video.autoplay = false;
+        video.disablePictureInPicture = false;
+        video.setAttribute('muted', '');
+        video.setAttribute('aria-hidden', 'true');
+
+        video.addEventListener('loadedmetadata', () => {
+            if (supportsPiP(video) || hasPiPAPI(video)) state.mode = 'pip-video';
+            else if (state.mode === 'detecting') state.mode = 'audio-fallback';
+            renderButton();
+        });
+        video.addEventListener('play', () => {
+            if (state.mode === 'pip-video') state.playing = true;
+            state.lastError = '';
+            renderButton();
+        });
+        video.addEventListener('pause', () => {
+            if (state.mode === 'pip-video') state.playing = false;
+            renderButton();
+        });
+        video.addEventListener('error', () => {
+            state.lastError = 'pip-video-error';
+            state.playing = false;
+            console.warn('[PiP后台支架] pip-loop.mp4 加载失败。请确认扩展目录里存在该文件，或替换成你自己的 H.264 MP4。');
+            renderButton();
+        });
+
+        video.addEventListener('enterpictureinpicture', () => {
+            state.pipActive = true;
             state.playing = true;
             state.lastError = '';
             renderButton();
         });
+        video.addEventListener('leavepictureinpicture', () => {
+            handlePiPLeft();
+        });
+        video.addEventListener('webkitpresentationmodechanged', () => {
+            const active = video.webkitPresentationMode === 'picture-in-picture';
+            if (active) {
+                state.pipActive = true;
+                state.playing = true;
+                state.lastError = '';
+                renderButton();
+            } else if (state.pipActive) {
+                handlePiPLeft();
+            }
+        });
+
+        // 不能 display:none；Safari 需要一个真实的视频元素才能进入 PiP。
+        (document.body || document.documentElement).appendChild(video);
+        try { video.load(); } catch (_) {}
+
+        state.video = video;
+        return video;
+    }
+
+    function ensureFallbackAudio() {
+        if (state.audio) return state.audio;
+        const audio = prepareMediaElement(new Audio(KEEPALIVE_AUDIO_URL));
+        audio.loop = false; // 文件本身约 5 分钟，仅作为不支持 PiP 时的兼容兜底。
+        audio.addEventListener('play', () => {
+            if (state.mode === 'audio-fallback') state.playing = true;
+            state.lastError = '';
+            renderButton();
+        });
         audio.addEventListener('pause', () => {
-            state.playing = false;
+            if (state.mode === 'audio-fallback') state.playing = false;
             renderButton();
         });
         audio.addEventListener('ended', () => {
+            if (state.mode !== 'audio-fallback') return;
             state.keepaliveWanted = false;
             state.playing = false;
             state.reason = '';
@@ -82,7 +204,7 @@
         audio.loop = false;
         audio.volume = DONE_SOUND_VOLUME;
         audio.addEventListener('error', () => {
-            console.warn('[5分钟后台支架] 回复完成提示音加载失败。');
+            console.warn('[PiP后台支架] 回复完成提示音加载失败。');
         });
         state.doneAudio = audio;
         return audio;
@@ -95,34 +217,152 @@
         }
     }
 
-    function stopKeepAlive() {
+    function handlePiPLeft() {
+        state.pipActive = false;
+
+        // 用户从系统 PiP 浮窗主动关闭时，把支架一起停掉，避免 1px 隐藏视频继续耗电。
+        if (state.keepaliveWanted && state.mode === 'pip-video') {
+            state.keepaliveWanted = false;
+            state.reason = '';
+            clearKeepaliveTimer();
+            const video = state.video;
+            if (video) {
+                try { video.pause(); } catch (_) {}
+                try { video.currentTime = 0; } catch (_) {}
+            }
+            state.playing = false;
+        }
+        renderButton();
+    }
+
+    async function exitPiP() {
+        const video = state.video;
+        if (!video || !state.pipActive) return;
+
+        try {
+            if (document.pictureInPictureElement === video && typeof document.exitPictureInPicture === 'function') {
+                await document.exitPictureInPicture();
+            } else if (supportsWebKitPiP(video) && video.webkitPresentationMode === 'picture-in-picture') {
+                video.webkitSetPresentationMode('inline');
+            }
+        } catch (_) {}
+        state.pipActive = false;
+    }
+
+    async function stopKeepAlive() {
         state.keepaliveWanted = false;
         state.reason = '';
-        const audio = ensureAudio();
-        try { audio.pause(); } catch (_) {}
-        try { audio.currentTime = 0; } catch (_) {}
+        clearKeepaliveTimer();
+
+        if (state.mode === 'pip-video') {
+            const video = ensureVideo();
+            await exitPiP();
+            try { video.pause(); } catch (_) {}
+            try { video.currentTime = 0; } catch (_) {}
+        } else {
+            const audio = ensureFallbackAudio();
+            try { audio.pause(); } catch (_) {}
+            try { audio.currentTime = 0; } catch (_) {}
+        }
+
         state.playing = false;
         renderButton();
     }
 
-    async function startKeepAlive(reason = 'manual') {
-        const audio = ensureAudio();
+    async function playVideoInline(reason = 'manual') {
+        const video = ensureVideo();
+        state.keepaliveWanted = true;
+        state.reason = reason;
+        state.lastError = '';
+        video.muted = true;
+        video.defaultMuted = true;
+        video.volume = 0;
+
+        try {
+            await video.play();
+            state.playing = true;
+            armKeepaliveTimer();
+            return true;
+        } catch (error) {
+            state.playing = false;
+            state.lastError = String(error?.name || error?.message || 'video-play-blocked');
+            console.warn('[PiP后台支架] 浏览器阻止了循环视频播放；请点一下右下角“PiP支架”按钮。', error);
+            return false;
+        } finally {
+            renderButton();
+        }
+    }
+
+    // 必须由用户点击直接触发。尤其是 iPhone Safari，不能在 GENERATION_STARTED 里可靠地自动进入 PiP。
+    async function enterPiPFromGesture(reason = 'manual') {
+        const video = ensureVideo();
+        state.keepaliveWanted = true;
+        state.reason = reason;
+        state.lastError = '';
+        video.muted = true;
+        video.defaultMuted = true;
+        video.volume = 0;
+
+        // 先发起播放，但不要在 Safari 分支前等待异步操作，尽量保留当前点击的 user activation。
+        const playPromise = video.play();
+
+        try {
+            if (supportsWebKitPiP(video)) {
+                video.webkitSetPresentationMode('picture-in-picture');
+            } else if (supportsStandardPiP(video)) {
+                await video.requestPictureInPicture();
+            } else if (hasPiPAPI(video)) {
+                // API 存在但当前不可进入：常见于视频尚未就绪、系统 PiP 被关闭等情况。
+                // 不自动切回音频，避免重新抢占 iPhone 的媒体会话。
+                throw new DOMException('Picture-in-Picture is not available yet.', 'NotAllowedError');
+            } else {
+                state.mode = 'audio-fallback';
+                try { video.pause(); } catch (_) {}
+                return startAudioFallback(reason);
+            }
+
+            await playPromise;
+            state.playing = true;
+            state.pipActive = video.webkitPresentationMode === 'picture-in-picture'
+                || document.pictureInPictureElement === video
+                || state.pipActive;
+            armKeepaliveTimer();
+            renderButton();
+            return true;
+        } catch (error) {
+            try { await playPromise; } catch (_) {}
+            state.pipActive = false;
+            state.playing = !video.paused;
+            state.lastError = String(error?.name || error?.message || 'pip-blocked');
+            console.warn('[PiP后台支架] 没能进入画中画。请确认系统允许 PiP，并在视频加载完成后再点一次按钮。', error);
+            renderButton();
+            return false;
+        }
+    }
+
+    async function startAudioFallback(reason = 'manual') {
+        const audio = ensureFallbackAudio();
         state.keepaliveWanted = true;
         state.reason = reason;
         state.lastError = '';
         try {
             audio.pause();
-            audio.currentTime = 0; // 每次新生成从完整5分钟重新计算。
+            audio.currentTime = 0;
             await audio.play();
-            state.unlocked = true;
             state.playing = true;
         } catch (error) {
             state.playing = false;
             state.lastError = String(error?.name || error?.message || 'play-blocked');
-            console.warn('[5分钟后台支架] 浏览器阻止了静音媒体播放；请点一下右下角“支架”按钮完成一次媒体授权。', error);
+            console.warn('[PiP后台支架] 当前浏览器不支持 PiP，且音频兜底也被自动播放策略拦截；请点一下右下角按钮授权。', error);
         }
         renderButton();
         return state.playing;
+    }
+
+    async function startKeepAlive(reason = 'manual') {
+        if (state.mode === 'detecting') detectMode();
+        if (state.mode === 'pip-video') return playVideoInline(reason);
+        return startAudioFallback(reason);
     }
 
     async function playDoneSound() {
@@ -137,83 +377,72 @@
             state.doneAudioUnlocked = true;
             return true;
         } catch (error) {
-            console.warn('[5分钟后台支架] 回复已经完成，但浏览器阻止了提示音播放。请先在页面上点一次“支架”按钮完成媒体授权。', error);
+            console.warn('[PiP后台支架] 回复已经完成，但浏览器阻止了提示音播放。可先点一次 PiP 支架按钮完成媒体授权，或关闭提示音。', error);
             return false;
         }
     }
 
     function scheduleDoneSound() {
         cancelPendingDoneSound();
-
-        // 如果用户刚刚手动停止生成，不把它当作“正常回复完成”。
         if (Date.now() - state.lastGenerationStoppedAt < 1500) return;
 
         const serial = state.generationSerial;
         state.doneSoundTimer = setTimeout(() => {
             state.doneSoundTimer = null;
-            // 350ms 内如果又开始了续写/自动继续，则取消这次提示音，避免在回复中途响。
             if (serial !== state.generationSerial) return;
             playDoneSound().catch(() => {});
         }, DONE_SOUND_DELAY_MS);
     }
 
-    // iOS Safari / WKWebView 对媒体播放有用户手势限制。
-    // 第一次触摸页面时，同时解锁静音支架和完成提示音两个媒体元素。
-    async function unlockFromGesture() {
-        if (state.unlocked && state.doneAudioUnlocked) return;
-
-        const keepalive = ensureAudio();
+    // 只解锁“回复完成提示音”。不再用首次触摸去播放 5 分钟静音音频，避免抢占 iPhone 媒体会话。
+    async function unlockDoneAudioFromGesture() {
+        if (state.doneAudioUnlocked) return;
         const doneAudio = ensureDoneAudio();
-
-        if (!state.unlocked && !state.keepaliveWanted) {
-            try {
-                keepalive.currentTime = 0;
-                await keepalive.play();
-                state.unlocked = true;
-                setTimeout(() => {
-                    if (state.keepaliveWanted) return;
-                    try { keepalive.pause(); } catch (_) {}
-                    try { keepalive.currentTime = 0; } catch (_) {}
-                    state.playing = false;
-                    renderButton();
-                }, 120);
-            } catch (_) {
-                // 用户仍可通过支架按钮手动授权。
-            }
-        }
-
-        if (!state.doneAudioUnlocked) {
-            try {
-                const previousMuted = doneAudio.muted;
-                doneAudio.muted = true;
-                doneAudio.currentTime = 0;
-                await doneAudio.play();
-                doneAudio.pause();
-                doneAudio.currentTime = 0;
-                doneAudio.muted = previousMuted;
-                state.doneAudioUnlocked = true;
-            } catch (_) {
-                try { doneAudio.muted = false; } catch (_) {}
-            }
+        try {
+            const previousMuted = doneAudio.muted;
+            doneAudio.muted = true;
+            doneAudio.currentTime = 0;
+            await doneAudio.play();
+            doneAudio.pause();
+            doneAudio.currentTime = 0;
+            doneAudio.muted = previousMuted;
+            state.doneAudioUnlocked = true;
+        } catch (_) {
+            try { doneAudio.muted = false; } catch (_) {}
         }
     }
 
     function renderButton() {
         const button = document.getElementById(BUTTON_ID);
         if (!button) return;
+
         button.classList.toggle('is-playing', !!state.playing);
-        button.classList.toggle('needs-unlock', !!state.lastError && !state.playing);
-        if (state.playing) {
-            button.textContent = '支架·5m';
-            button.title = '5分钟静音支架正在运行；AI正常回复完成后会播放一声提示音。点一下可提前停止支架。';
+        button.classList.toggle('is-pip', !!state.pipActive);
+        button.classList.toggle('needs-unlock', !!state.lastError && !state.pipActive);
+
+        if (state.mode === 'audio-fallback') {
+            if (state.playing) {
+                button.textContent = '音频·5m';
+                button.title = '当前浏览器未提供可用 PiP，正在使用旧版 5 分钟静音音频兜底。点一下可停止。';
+            } else {
+                button.textContent = state.lastError ? '点我授权' : '音频支架';
+                button.title = '当前浏览器未提供可用 PiP；点一下启动 5 分钟静音音频兜底。';
+            }
+        } else if (state.pipActive) {
+            button.textContent = 'PiP·5m';
+            button.title = '循环视频正在系统画中画中播放。点一下退出 PiP 并停止支架。';
+        } else if (state.playing) {
+            button.textContent = '开PiP';
+            button.title = '循环视频已播放，但还没有进入系统画中画。点一下进入 PiP。';
         } else if (state.lastError) {
-            button.textContent = '点我授权';
-            button.title = '浏览器拦截了自动播放。点一下完成媒体授权并启动5分钟支架。';
+            button.textContent = '再点PiP';
+            button.title = '上次进入 PiP 失败。确认 pip-loop.mp4 可播放且系统允许画中画，然后再点一次。';
         } else {
-            button.textContent = '支架';
-            button.title = '点一下手动启动5分钟后台支架；AI正常回复完成后会播放一声提示音。';
+            button.textContent = 'PiP支架';
+            button.title = '点一下播放 pip-loop.mp4 并进入画中画；最长运行约 5 分钟。';
         }
-        button.setAttribute('aria-pressed', state.playing ? 'true' : 'false');
+
+        button.setAttribute('aria-pressed', state.pipActive || state.playing ? 'true' : 'false');
     }
 
     function ensureButton() {
@@ -221,14 +450,28 @@
         const button = document.createElement('button');
         button.id = BUTTON_ID;
         button.type = 'button';
-        button.textContent = '支架';
-        button.setAttribute('aria-label', '5分钟后台支架');
+        button.textContent = 'PiP支架';
+        button.setAttribute('aria-label', '5分钟 PiP 后台支架');
         button.addEventListener('click', async (event) => {
             event.preventDefault();
             event.stopPropagation();
-            await unlockFromGesture();
-            if (state.keepaliveWanted && state.playing) stopKeepAlive();
-            else await startKeepAlive('manual');
+
+            if (state.mode === 'detecting') detectMode();
+
+            if (state.mode === 'pip-video') {
+                if (state.pipActive) {
+                    await stopKeepAlive();
+                } else {
+                    // PiP 请求优先使用这一次点击的 user activation，再去解锁提示音。
+                    await enterPiPFromGesture('manual');
+                    unlockDoneAudioFromGesture().catch(() => {});
+                }
+            } else if (state.keepaliveWanted && state.playing) {
+                await stopKeepAlive();
+            } else {
+                await unlockDoneAudioFromGesture();
+                await startAudioFallback('manual');
+            }
         });
         document.body.appendChild(button);
         renderButton();
@@ -249,6 +492,8 @@
             cancelPendingDoneSound();
             state.generationSerial += 1;
             state.lastGenerationStoppedAt = 0;
+
+            // 如果用户已经开着 PiP，就继续/重置 5 分钟；否则只启动静音循环视频，等待用户点“开PiP”。
             startKeepAlive('generation').catch(() => {});
         });
 
@@ -263,17 +508,17 @@
         });
 
         state.eventBound = true;
-        console.info(`[5分钟后台支架] ${BUILD} 已绑定 GENERATION_STARTED / GENERATION_ENDED / GENERATION_STOPPED。`);
+        console.info(`[PiP后台支架] ${BUILD} 已绑定 GENERATION_STARTED / GENERATION_ENDED / GENERATION_STOPPED。`);
         return true;
     }
 
     function boot() {
-        ensureAudio();
+        ensureVideo();
         ensureDoneAudio();
+        detectMode();
         ensureButton();
         bindGenerationEvents();
 
-        // 只重试事件总线初始化，不做持续扫描；最多约10秒后停止。
         let attempts = 0;
         const retry = () => {
             if (state.eventBound || attempts >= 40) return;
@@ -282,12 +527,14 @@
         };
         retry();
 
-        document.addEventListener('pointerdown', unlockFromGesture, { once: true, capture: true, passive: true });
-        document.addEventListener('touchstart', unlockFromGesture, { once: true, capture: true, passive: true });
+        document.addEventListener('pointerdown', unlockDoneAudioFromGesture, { once: true, capture: true, passive: true });
+        document.addEventListener('touchstart', unlockDoneAudioFromGesture, { once: true, capture: true, passive: true });
 
         globalThis.STKeepAlive5m = Object.freeze({
             start: () => startKeepAlive('api'),
             stop: () => stopKeepAlive(),
+            enterPiP: () => enterPiPFromGesture('api'),
+            exitPiP: () => exitPiP(),
             testDoneSound: () => playDoneSound(),
             setDoneSoundEnabled: (enabled) => {
                 state.doneSoundEnabled = !!enabled;
@@ -295,12 +542,15 @@
             },
             status: () => ({
                 build: state.build,
-                unlocked: state.unlocked,
+                mode: state.mode,
+                pipSupported: supportsPiP(state.video),
+                pipActive: state.pipActive,
                 doneAudioUnlocked: state.doneAudioUnlocked,
                 playing: state.playing,
                 reason: state.reason,
                 lastError: state.lastError,
                 doneSoundEnabled: state.doneSoundEnabled,
+                pipVideoUrl: PIP_VIDEO_URL,
             }),
         });
     }

@@ -1,12 +1,12 @@
 {
-  "display_name": "5分钟后台支架",
+  "display_name": "5分钟 PiP 后台支架",
   "loading_order": 5,
   "requires": [],
   "optional": [],
   "js": "index.js",
   "css": "style.css",
   "author": "VVV · standalone utility",
-  "version": "1.1.0",
-  "description": "SillyTavern 手机短时后台支架：生成开始时播放约5分钟静音媒体，并在 AI 正常回复完成后播放短提示音。",
+  "version": "2.0.0",
+  "description": "SillyTavern iPhone 后台支架：优先使用无声循环视频 + 系统画中画（PiP），不再默认占用音频播放；无 PiP 时回退到约5分钟静音媒体，并保留回复完成提示音。",
   "auto_update": true
 }
