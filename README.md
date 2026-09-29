@@ -1,15 +1,33 @@
-# 原生通知桥接 v3.2.1
+# 原生通知桥接 v3.3.0
 
-这是配套 SillyTavern Native PiP App v1.3+ 的前端桥接扩展。
+配套：
 
-## v3.2.1
+- iOS 原生壳 v1.4.0+
+- SillyTavern Server Plugin `st-native-monitor` v1.0.0+
 
-- 设置界面改成 SillyTavern 标准 `inline-drawer` 折叠栏。
-- 默认在扩展程序列表中只显示「原生通知桥接」标题和下拉箭头。
-- 点击展开后才显示系统通知、测试横幅和状态信息。
-- 不修改 PiP 常驻、回复完成事件、后台保活、系统通知桥接逻辑。
+## v3.3.0 改动
 
-## 配套
+最重要的变化是：**后台回复完成提醒不再以 `generation_ended` 为唯一依据。**
 
-- 推荐原生 App：v1.3.0 或更新版本。
-- 原生 App 已接管 PiP 时，本扩展不会显示网页 PiP 按钮。
+iOS 后台可能冻结 WKWebView JavaScript，因此旧版经常需要重新打开 App 后 `generation_ended` 才执行。v3.3 会在原生 App 环境下把以下文本生成请求透明转发给 Server Plugin：
+
+- `/api/backends/chat-completions/generate`
+- `/api/backends/text-completions/generate`
+- `/api/backends/kobold/generate`
+- `/api/novelai/generate`
+
+Server Plugin 再转发到原始 SillyTavern 端点，浏览器收到的响应格式保持不变。原生 App 独立轮询服务端状态并发通知。
+
+`generation_ended` 仍保留为 Server Plugin 不可用时的自动降级方案。
+
+## 设置面板
+
+仍使用 SillyTavern 标准折叠抽屉。展开后会显示：
+
+- 系统通知权限
+- 测试系统横幅
+- 原生壳版本
+- PiP 状态
+- 服务端监听版本/状态
+
+如果看到 `服务端监听：未连接（后台提醒仍可能延迟）`，请检查 Server Plugin 是否已安装并重启 SillyTavern。

@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "VVV · native bridge edition",
-  "version": "3.2.1",
-  "description": "SillyTavern 原生桥接：iOS App v1.3+ 已内置常驻 PiP；本扩展只负责回复完成事件、后台保活与系统通知桥接，Safari/桌面保留网页 PiP 降级。",
+  "version": "3.3.0",
+  "description": "iOS 原生桥接 v3.3：生成请求通过 SillyTavern Server Plugin 进行服务端完成监测，后台提醒不再依赖被冻结的 WKWebView generation_ended；保留原生 PiP、通知与浏览器降级。",
   "auto_update": false
 }
