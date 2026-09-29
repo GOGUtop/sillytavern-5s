@@ -1,12 +1,12 @@
 {
-  "display_name": "PiP 原生桥接支架",
+  "display_name": "原生通知桥接（PiP由App常驻）",
   "loading_order": 5,
   "requires": [],
   "optional": [],
   "js": "index.js",
   "css": "style.css",
   "author": "VVV · native bridge edition",
-  "version": "3.1.0",
-  "description": "SillyTavern PiP 支架：在 iOS 原生壳中调用 AVPictureInPictureController 和系统本地通知；Safari/桌面保留网页 PiP 与提示音降级。",
+  "version": "3.2.0",
+  "description": "SillyTavern 原生桥接：iOS App v1.3+ 已内置常驻 PiP；本扩展只负责回复完成事件、后台保活与系统通知桥接，Safari/桌面保留网页 PiP 降级。",
   "auto_update": false
 }

@@ -1,7 +1,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '3.1.0';
+    const VERSION = '3.2.0';
     const BASE_URL = import.meta.url;
     const PIP_VIDEO_URL = new URL(`./pip-loop.mp4?v=${VERSION}`, BASE_URL).href;
     const DONE_AUDIO_URL = new URL(`./reply-done.mp3?v=${VERSION}`, BASE_URL).href;
@@ -202,10 +202,7 @@
     async function handlePiPClick() {
         state.native = nativeAvailable();
         if (state.native) {
-            nativePost(state.pipActive ? 'stopPiP' : 'startPiP', {
-                videoURL: PIP_VIDEO_URL,
-                maxDurationSeconds: 300,
-            });
+            toast('原生 App v1.3+ 已接管常驻 PiP：打开 App 后会自动启动并保持待命，无需网页按钮。', 'info');
             return;
         }
         if (state.pipActive) await stopWebPiP();
@@ -246,7 +243,7 @@
         panel.id = PANEL_ID;
         panel.className = 'inline-drawer';
         panel.innerHTML = `
-          <div class="inline-drawer-header"><b>PiP 原生桥接支架</b></div>
+          <div class="inline-drawer-header"><b>原生通知桥接</b></div>
           <div class="st-native-pip-content">
             <button id="${PIP_BUTTON_ID}" type="button" class="menu_button">PiP视频开启</button>
             <button id="${NOTIFY_BUTTON_ID}" type="button" class="menu_button">开启系统通知</button>
@@ -266,7 +263,17 @@
         const pipButton = document.getElementById(PIP_BUTTON_ID);
         const notifyButton = document.getElementById(NOTIFY_BUTTON_ID);
         const status = document.getElementById(STATUS_ID);
-        if (pipButton) pipButton.textContent = state.pipActive ? '关闭PiP视频' : 'PiP视频开启';
+        if (pipButton) {
+            if (state.native) {
+                pipButton.textContent = 'PiP由原生App常驻管理';
+                pipButton.disabled = true;
+                pipButton.style.display = 'none';
+            } else {
+                pipButton.disabled = false;
+                pipButton.style.display = '';
+                pipButton.textContent = state.pipActive ? '关闭PiP视频' : 'PiP视频开启';
+            }
+        }
         if (notifyButton) {
             const granted = ['granted', 'provisional', 'ephemeral'].includes(state.notificationStatus);
             notifyButton.textContent = granted ? '系统通知已开启' : '开启系统通知';
@@ -276,7 +283,7 @@
                 const notify = ['granted', 'provisional', 'ephemeral'].includes(state.notificationStatus)
                     ? '横幅：已授权'
                     : `横幅：${state.notificationStatus === 'denied' ? '被拒绝，请去系统设置开启' : '未授权'}`;
-                status.textContent = `原生壳：已连接${state.nativeVersion ? ` v${state.nativeVersion}` : ''} · PiP：原生 AVKit · ${notify}`;
+                status.textContent = `原生壳：已连接${state.nativeVersion ? ` v${state.nativeVersion}` : ''} · PiP：原生App常驻/自动恢复 · ${notify}`;
                 status.className = 'st-native-status st-native-ok';
             } else {
                 status.textContent = `原生壳：未连接 · PiP：浏览器降级 · 回复完成：提示音降级`;
