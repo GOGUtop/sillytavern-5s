@@ -1,27 +1,32 @@
 #st-native-pip-panel {
-  margin: 8px 0 12px;
+  margin: 0;
 }
+
+/* 使用 SillyTavern 原生 inline-drawer 外观，不再把控件裸露在扩展列表中。 */
 #st-native-pip-panel .st-native-pip-content {
   display: grid;
   gap: 8px;
-  padding: 8px 0 2px;
+  padding: 4px 0 2px;
 }
+
 #st-native-pip-panel .menu_button {
   width: 100%;
   min-height: 38px;
 }
+
 #st-native-pip-panel .st-native-status {
   opacity: .82;
   font-size: .9em;
   line-height: 1.45;
   overflow-wrap: anywhere;
+  padding: 2px 1px 4px;
 }
-#st-native-pip-panel .st-native-ok {
-  opacity: 1;
-}
+
+#st-native-pip-panel .st-native-ok,
 #st-native-pip-panel .st-native-warning {
   opacity: 1;
 }
+
 #st-native-pip-hidden-video {
   position: fixed !important;
   left: 1px !important;

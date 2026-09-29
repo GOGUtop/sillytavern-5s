@@ -1,7 +1,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '3.2.0';
+    const VERSION = '3.2.1';
     const BASE_URL = import.meta.url;
     const PIP_VIDEO_URL = new URL(`./pip-loop.mp4?v=${VERSION}`, BASE_URL).href;
     const DONE_AUDIO_URL = new URL(`./reply-done.mp3?v=${VERSION}`, BASE_URL).href;
@@ -241,14 +241,19 @@
 
         panel = document.createElement('div');
         panel.id = PANEL_ID;
-        panel.className = 'inline-drawer';
+        panel.className = 'inline-drawer st-native-bridge-drawer';
         panel.innerHTML = `
-          <div class="inline-drawer-header"><b>原生通知桥接</b></div>
-          <div class="st-native-pip-content">
-            <button id="${PIP_BUTTON_ID}" type="button" class="menu_button">PiP视频开启</button>
-            <button id="${NOTIFY_BUTTON_ID}" type="button" class="menu_button">开启系统通知</button>
-            <button id="${TEST_BUTTON_ID}" type="button" class="menu_button">测试系统横幅</button>
-            <div id="${STATUS_ID}" class="st-native-status"></div>
+          <div class="inline-drawer-toggle inline-drawer-header">
+            <b>原生通知桥接</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+          </div>
+          <div class="inline-drawer-content">
+            <div class="st-native-pip-content">
+              <button id="${PIP_BUTTON_ID}" type="button" class="menu_button">PiP视频开启</button>
+              <button id="${NOTIFY_BUTTON_ID}" type="button" class="menu_button">开启系统通知</button>
+              <button id="${TEST_BUTTON_ID}" type="button" class="menu_button">测试系统横幅</button>
+              <div id="${STATUS_ID}" class="st-native-status"></div>
+            </div>
           </div>`;
         container.appendChild(panel);
         document.getElementById(PIP_BUTTON_ID)?.addEventListener('click', handlePiPClick);
